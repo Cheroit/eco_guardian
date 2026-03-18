@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>EcoGuardian — прототип</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+    />
+  </head>
+  <body class="bg-green-50 text-gray-900">
+    <div class="min-h-screen flex flex-col">
+      <header class="bg-green-700 text-white py-4 shadow">
+        <div class="max-w-4xl mx-auto px-4 flex items-center justify-between">
+          <h1 class="text-2xl font-bold">EcoGuardian</h1>
+          <span class="text-sm opacity-80">Прототип мониторинга экорисков</span>
+        </div>
+      </header>
+
+      <main class="flex-1 max-w-4xl mx-auto px-4 py-6 space-y-8">
+        <section class="bg-white shadow rounded-lg p-4 md:p-6">
+          <h2 class="text-xl font-semibold mb-4">Текущая обстановка</h2>
+          <div class="flex flex-col md:flex-row md:items-end md:space-x-4 space-y-4 md:space-y-0">
+            <div class="flex-1">
+              <label for="city-input" class="block text-sm font-medium mb-1">Город</label>
+              <input
+                id="city-input"
+                type="text"
+                class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                value="Moscow"
+              />
+            </div>
+            <button
+              id="analyze-btn"
+              class="inline-flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              Анализировать
+            </button>
+          </div>
+
+          <div id="current-result" class="mt-6 hidden">
+            <div class="flex items-center space-x-4 mb-4">
+              <div id="risk-badge" class="px-3 py-1 rounded-full text-sm font-semibold bg-gray-200">
+                Риск: —
+              </div>
+              <div id="risk-score" class="text-lg font-semibold">— / 100</div>
+            </div>
+
+            <p id="summary" class="text-sm md:text-base mb-4 text-gray-800"></p>
+
+            <div>
+              <h3 class="font-semibold mb-2">Рекомендации</h3>
+              <ul id="recommendations" class="list-disc list-inside space-y-1 text-sm md:text-base"></ul>
+            </div>
+
+            <div class="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3 text-xs md:text-sm text-gray-700">
+              <div><span class="font-medium">Температура:</span> <span id="temp">—</span> °C</div>
+              <div><span class="font-medium">Влажность:</span> <span id="humidity">—</span> %</div>
+              <div><span class="font-medium">Скорость ветра:</span> <span id="wind">—</span> м/с</div>
+              <div><span class="font-medium">AQI:</span> <span id="aqi">—</span></div>
+              <div><span class="font-medium">PM2.5:</span> <span id="pm25">—</span> µg/m³</div>
+              <div><span class="font-medium">Пожароопасность:</span> <span id="fire">—</span> / 100</div>
+            </div>
+          </div>
+
+          <div id="current-loading" class="mt-4 text-sm text-gray-500 hidden">
+            Загружаем данные…
+          </div>
+          <div id="current-error" class="mt-4 text-sm text-red-600 hidden"></div>
+        </section>
+
+        <section class="bg-white shadow rounded-lg p-4 md:p-6">
+          <h2 class="text-xl font-semibold mb-4">Задать вопрос</h2>
+          <div class="space-y-3">
+            <textarea
+              id="question-input"
+              rows="3"
+              class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+              placeholder="Например: Насколько безопасно сегодня заниматься спортом на улице?"
+            ></textarea>
+            <button
+              id="ask-btn"
+              class="inline-flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              Спросить
+            </button>
+          </div>
+          <div id="qa-loading" class="mt-4 text-sm text-gray-500 hidden">
+            Формируем ответ…
+          </div>
+          <div id="qa-error" class="mt-4 text-sm text-red-600 hidden"></div>
+          <pre
+            id="qa-answer"
+            class="mt-4 whitespace-pre-wrap text-sm md:text-base bg-gray-50 border border-gray-200 rounded p-3 hidden"
+          ></pre>
+        </section>
+      </main>
+
+      <footer class="border-t py-4 text-center text-xs text-gray-500">
+        EcoGuardian — учебный прототип, не использовать для критически важных решений.
+      </footer>
+    </div>
+
+    <script>
+      function riskColor(level) {
+        switch (level) {
+          case "low":
+            return "bg-green-100 text-green-800";
+          case "medium":
+            return "bg-yellow-100 text-yellow-800";
+          case "high":
+            return "bg-orange-100 text-orange-800";
+          case "critical":
+            return "bg-red-100 text-red-800";
+          default:
+            return "bg-gray-200 text-gray-800";
+        }
+      }
+
+      const apiBase = "http://localhost:8000";
+
+      document.getElementById("analyze-btn").addEventListener("click", async () => {
+        const city = document.getElementById("city-input").value.trim() || "Moscow";
+        const loading = document.getElementById("current-loading");
+        const error = document.getElementById("current-error");
+        const result = document.getElementById("current-result");
+
+        loading.classList.remove("hidden");
+        error.classList.add("hidden");
+        result.classList.add("hidden");
+
+        try {
+          const res = await fetch(`${apiBase}/api/environment/current?city=${encodeURIComponent(city)}`);
+          if (!res.ok) throw new Error("Ошибка при запросе API");
+          const data = await res.json();
+
+          const risk = data.risk;
+          const reading = data.reading;
+
+          const badge = document.getElementById("risk-badge");
+          badge.textContent = `Риск: ${risk.risk_level}`;
+          badge.className = `px-3 py-1 rounded-full text-sm font-semibold ${riskColor(
+            risk.risk_level
+          )}`;
+
+          document.getElementById("risk-score").textContent = `${risk.overall_risk_score} / 100`;
+          document.getElementById("summary").textContent = risk.summary;
+
+          const recList = document.getElementById("recommendations");
+          recList.innerHTML = "";
+          for (const rec of risk.recommendations) {
+            const li = document.createElement("li");
+            li.textContent = rec;
+            recList.appendChild(li);
+          }
+
+          document.getElementById("temp").textContent = reading.temperature ?? "—";
+          document.getElementById("humidity").textContent = reading.humidity ?? "—";
+          document.getElementById("wind").textContent = reading.wind_speed ?? "—";
+          document.getElementById("aqi").textContent = reading.air_quality_index ?? "—";
+          document.getElementById("pm25").textContent = reading.pm25 ?? "—";
+          document.getElementById("fire").textContent = reading.fire_danger_index ?? "—";
+
+          result.classList.remove("hidden");
+        } catch (e) {
+          error.textContent = e.message || "Не удалось получить данные";
+          error.classList.remove("hidden");
+        } finally {
+          loading.classList.add("hidden");
+        }
+      });
+
+      document.getElementById("ask-btn").addEventListener("click", async () => {
+        const city = document.getElementById("city-input").value.trim() || "Moscow";
+        const question = document.getElementById("question-input").value.trim();
+        const loading = document.getElementById("qa-loading");
+        const error = document.getElementById("qa-error");
+        const answerEl = document.getElementById("qa-answer");
+
+        if (!question) {
+          error.textContent = "Пожалуйста, введите вопрос.";
+          error.classList.remove("hidden");
+          return;
+        }
+
+        loading.classList.remove("hidden");
+        error.classList.add("hidden");
+        answerEl.classList.add("hidden");
+
+        try {
+          const res = await fetch(`${apiBase}/api/qa`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ city, question }),
+          });
+          if (!res.ok) throw new Error("Ошибка при запросе API");
+          const data = await res.json();
+          answerEl.textContent = data.answer;
+          answerEl.classList.remove("hidden");
+        } catch (e) {
+          error.textContent = e.message || "Не удалось получить ответ";
+          error.classList.remove("hidden");
+        } finally {
+          loading.classList.add("hidden");
+        }
+      });
+    </script>
+  </body>
+  </html>
+
